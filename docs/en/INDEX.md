@@ -1,9 +1,6 @@
 # ecommerce also bought
 
-This module adds the "also bought" feature
-to e-commerce. For example, when a customer
-purchases a laptop, this module could recommend the
-customer to add an extended warranty.
+This module shows customers what other people bought.
 
 ## Developers
 

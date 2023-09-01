@@ -52,34 +52,6 @@ class EcommerceAlsoBoughtDOD extends DataExtension
     }
 
     /**
-     * small cleanup.
-     */
-    public function onAfterWrite()
-    {
-        $owner = $this->getOwner();
-        $products = $owner->EcommerceAlsoBoughtProducts();
-        if ($products->exists()) {
-            foreach ($products as $product) {
-                if (! $product instanceof Product) {
-                    $products->remove($product);
-                } elseif (! $product->AllowPurchase) {
-                    $products->remove($product);
-                }
-            }
-        }
-        $products = $owner->BoughtFor();
-        if ($products->exists()) {
-            foreach ($products as $product) {
-                if (! $product instanceof Product) {
-                    $products->remove($product);
-                } elseif (! $product->AllowPurchase) {
-                    $products->remove($product);
-                }
-            }
-        }
-    }
-
-    /**
      * only returns the products that are for sale
      * if only those need to be showing.
      *
