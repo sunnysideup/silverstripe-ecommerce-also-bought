@@ -1,7 +1,7 @@
 {
-  "name": "sunnysideup/ecommerce_also_bought",
+  "name": "sunnysideup/ecommerce-also-bought",
   "type": "silverstripe-vendormodule",
-  "description": "adds 'also bought is ...' to e-commerce ",
+  "description": "See what other customers bought in conjunction with a product.",
   "keywords": [
     "Silverstripe-CMS",
     "CMS",
