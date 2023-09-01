@@ -1,0 +1,39 @@
+{
+  "name": "sunnysideup/ecommerce_also_bought",
+  "type": "silverstripe-vendormodule",
+  "description": "adds 'also bought is ...' to e-commerce ",
+  "keywords": [
+    "Silverstripe-CMS",
+    "CMS",
+    "Silverstripe",
+    "ecommerce",
+    "e-commerce",
+    "shop",
+    "also bought",
+    "recommendations",
+    "accessoires"
+  ],
+  "license": "BSD-3-Clause",
+  "authors": [
+    {
+      "name": "Nicolaas Francken",
+      "email": "modules@sunnysideup.co.nz",
+      "role": "lead developer"
+    }
+  ],
+  "require": {
+    "sunnysideup/ecommerce": "*",
+    "silverstripe/recipe-cms": "^4.0 || ^5.0"
+  },
+  "extra": {
+    "expose": [
+      "client/javascript",
+      "client/css"
+    ]
+  },
+  "autoload": {
+    "psr-4": {
+      "Sunnysideup\\EcommerceAlsoBought\\": "src/"
+    }
+  }
+}

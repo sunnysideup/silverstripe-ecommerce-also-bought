@@ -1,0 +1,4 @@
+mappings:
+  BoughtProductsModifier_Form: Sunnysideup\EcommerceAlsoBought\Forms\BoughtProductsModifierForm
+  BoughtProductsModifier: Sunnysideup\EcommerceAlsoBought\Modifiers\BoughtProductsModifier
+  EcommerceAlsoBoughtDOD: Sunnysideup\EcommerceAlsoBought\Model\EcommerceAlsoBoughtDOD
