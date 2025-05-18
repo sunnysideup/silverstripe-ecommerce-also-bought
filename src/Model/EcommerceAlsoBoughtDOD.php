@@ -2,10 +2,11 @@
 
 namespace Sunnysideup\EcommerceAlsoBought\Model;
 
+use SilverStripe\Core\Extension;
 use SilverStripe\Forms\FieldList;
 use SilverStripe\Forms\GridField\GridField;
-use SilverStripe\ORM\DataExtension;
 use SilverStripe\ORM\DataList;
+use SilverStripe\ORM\DB;
 use Sunnysideup\Ecommerce\Config\EcommerceConfig;
 use Sunnysideup\Ecommerce\Forms\Gridfield\Configs\GridFieldConfigForProducts;
 use Sunnysideup\Ecommerce\Pages\Product;
@@ -17,10 +18,16 @@ use Sunnysideup\Ecommerce\Pages\Product;
  * @method \SilverStripe\ORM\ManyManyList|\Sunnysideup\Ecommerce\Pages\Product[] EcommerceAlsoBoughtProducts()
  * @method \SilverStripe\ORM\ManyManyList|\Sunnysideup\Ecommerce\Pages\Product[] BoughtFor()
  */
-class EcommerceAlsoBoughtDOD extends DataExtension
+class EcommerceAlsoBoughtDOD extends Extension
 {
     private static $many_many = [
         'EcommerceAlsoBoughtProducts' => Product::class,
+    ];
+    private static $many_many_extraFields = [
+        'EcommerceAlsoBoughtProducts' => [
+            'Strength' => 'Float',
+            'AutomaticallyAdded' => 'Boolean',
+        ],
     ];
 
     private static $belongs_many_many = [
@@ -30,24 +37,27 @@ class EcommerceAlsoBoughtDOD extends DataExtension
     public function updateCMSFields(FieldList $fields)
     {
         $owner = $this->getOwner();
-        if ($this->owner instanceof Product) {
-            $fields->addFieldsToTab(
-                'Root.Recommend',
-                [
-                    GridField::create(
-                        'EcommerceAlsoBoughtProducts',
-                        'Also Bought Products',
-                        $owner->EcommerceAlsoBoughtProducts(),
-                        GridFieldConfigForProducts::create()
-                    ),
-                    GridField::create(
-                        'BoughtFor',
-                        'Bought For',
-                        $owner->BoughtFor(),
-                        GridFieldConfigForProducts::create()
-                    ),
-                ]
-            );
+        $config = EcommerceConfig::inst();
+        if ($config->ShowFullDetailsForProducts) {
+            if ($this->owner instanceof Product) {
+                $fields->addFieldsToTab(
+                    'Root.Recommend',
+                    [
+                        GridField::create(
+                            'EcommerceAlsoBoughtProducts',
+                            'Also Bought Products',
+                            $owner->EcommerceAlsoBoughtProducts(),
+                            GridFieldConfigForProducts::create()
+                        ),
+                        GridField::create(
+                            'BoughtFor',
+                            'Bought For',
+                            $owner->BoughtFor(),
+                            GridFieldConfigForProducts::create()
+                        ),
+                    ]
+                );
+            }
         }
     }
 
@@ -73,6 +83,7 @@ class EcommerceAlsoBoughtDOD extends DataExtension
      */
     public function BoughtForForSale()
     {
+        $owner = $this->getOwner();
         $list = $owner->BoughtFor();
 
         return $this->addAllowPurchaseFilter($list);
@@ -84,7 +95,28 @@ class EcommerceAlsoBoughtDOD extends DataExtension
         if (EcommerceConfig::inst()->OnlyShowProductsThatCanBePurchased) {
             $list = $list->filter(['AllowPurchase' => 1]);
         }
+        $list = $list->orderBy('Product_EcommerceAlsoBoughtProducts.Strength DESC');
 
         return $list;
+    }
+
+    public function requireDefaultRecords()
+    {
+        DB::require_index(
+            'Product_EcommerceAlsoBoughtProducts',
+            'AutomaticallyAdded',
+            [
+                'type' => 'index',
+                'columns' => ['AutomaticallyAdded'],
+            ],
+        );
+        DB::require_index(
+            'Product_EcommerceAlsoBoughtProducts', // Table name
+            'Strength',  // Field name
+            [
+                'type' => 'index',
+                'columns' => ['Strength'],
+            ],
+        );
     }
 }

@@ -8,10 +8,12 @@ use SilverStripe\ORM\DataObject;
 use SilverStripe\ORM\DB;
 use SilverStripe\Security\Member;
 use Sunnysideup\Ecommerce\Config\EcommerceConfig;
+use Sunnysideup\Ecommerce\Interfaces\BuyableModel;
 use Sunnysideup\Ecommerce\Model\Address\BillingAddress;
 use Sunnysideup\Ecommerce\Model\Address\ShippingAddress;
 use Sunnysideup\Ecommerce\Model\Order;
 use Sunnysideup\Ecommerce\Model\OrderAttribute;
+use Sunnysideup\Ecommerce\Model\OrderItem;
 use Sunnysideup\Ecommerce\Model\Process\OrderEmailRecord;
 use Sunnysideup\Ecommerce\Model\Process\OrderStatusLog;
 use Sunnysideup\Ecommerce\Model\Process\OrderStep;
@@ -34,10 +36,17 @@ class FindAlsoBought extends BuildTask
 
     protected $description = 'Uses the order history to find products that are often bought together.';
 
-    private static $segment = 'FindAlsoBought';
+    private static $segment = 'findalsobought';
 
-    private static $min_percentage_to_be_included = 0.1;
-    private static $min_absolute_count_to_be_included = 2;
+
+    /**
+     * this is the decay rate for the popularity. The higher the number, the faster the decay.
+     * 0.003 is a good number for a product that is popular for 3 months.
+     * 0.001 is a good number for a product that is popular for 1 year.
+     * 0.0001 is a good number for a product that is popular for 10 years.
+     * @var float
+     */
+    private static float $decay_rate = 0.0005;
 
     /**
      * run in verbose mode.
@@ -61,50 +70,59 @@ class FindAlsoBought extends BuildTask
 
     public function run($request)
     {
-        if($this->verbose) {
+        if ($this->verbose) {
             $this->verboseMainDetailsOnly = true;
         }
-        $products = Product::get();
+        $products = Product::get()
+            ->innerJoin('OrderItem', 'OrderItem.BuyableID = Product.ID')
+            ->columnUnique('ID');
+        if ($this->verbose) {
+            DB::alteration_message('Sold Products Found ' . count($products), 'created');
+        }
         $report = [];
-        if(! $this->dryRun) {
+        if (! $this->dryRun) {
             DB::query('DELETE FROM Product_EcommerceAlsoBoughtProducts WHERE AutomaticallyAdded = 1 ');
         }
-        foreach($products as $product) {
+        foreach ($products as $productID) {
+            $product = $this->getCachedProducts($productID);
             $links = $this->findAlsoBought($product);
-            foreach($links as $name => $productArray) {
-                if($this->verbose) {
-                    DB::alteration_message('DOING '.$product->Title, 'created');
+            foreach ($links as $name => $productArray) {
+                if ($this->verbose) {
+                    DB::alteration_message('DOING ' . $product->Title, 'created');
                 }
-                foreach(array_keys($productArray) as $productId) {
-                    if(! $this->dryRun) {
-                        $product->$name()->add($productId, ['AutomaticallyAdded' => 1]);
+                foreach ($productArray as $productId => $strength) {
+                    if (! $this->dryRun) {
+                        $product->$name()->add(
+                            $productId,
+                            [
+                                'AutomaticallyAdded' => 1,
+                                'Strength' => $strength,
+                            ]
+                        );
                     }
-                    $title = DB::query('SELECT Title FROM SiteTree WHERE ID = '.$productId)->value();
-                    $internalItemID = DB::query('SELECT InternalItemID FROM Product WHERE ID = '.$productId)->value();
-                    if($this->verboseMainDetailsOnly) {
-                        if($name === 'EcommerceAlsoBoughtProducts') {
-                            $accessory = $product->Title . '('.$product->InternalItemID.')';
-                            $mainProduct = $title . '('.$internalItemID.')';
-                        } else {
-                            $mainProduct = $product->Title . '('.$product->InternalItemID.')';
-                            $accessory = $title . '('.$internalItemID.')';
-                        }
-                        DB::alteration_message('... Adding '.$accessory.') as accessory to '.$mainProduct, 'created');
+                    $otherProductTitle = DB::query('SELECT Title FROM SiteTree WHERE ID = ' . $productId)->value();
+                    $otherProductInternalItemID = DB::query('SELECT InternalItemID FROM Product WHERE ID = ' . $productId)->value();
+                    if ($name === 'EcommerceAlsoBoughtProducts') {
+                        $mainProduct = $product->Title . ' (' . $product->InternalItemID . ')';
+                        $accessory = $otherProductTitle . ' (' . $otherProductInternalItemID . ')';
+                    } else {
+                        $mainProduct = $otherProductTitle . ' (' . $otherProductInternalItemID . ')';
+                        $accessory = $product->Title . ' ' . $product->InternalItemID . ')';
                     }
-                    if(! isset($report[$mainProduct])) {
+                    DB::alteration_message('... Adding ' . $accessory . ') as accessory to ' . $mainProduct, 'created');
+                    if (! isset($report[$mainProduct])) {
                         $report[$mainProduct] = [];
                     }
                     $report[$mainProduct][] = $accessory;
                 }
             }
-
         }
-        if($this->verboseMainDetailsOnly) {
-            foreach($report as $mainProduct => $accessories) {
+        if ($this->verboseMainDetailsOnly) {
+            foreach ($report as $mainProduct => $accessories) {
                 DB::alteration_message($mainProduct);
                 $accessories = array_unique($accessories);
-                foreach($accessories as $accessory) {
-                    DB::alteration_message('...'.$accessory);
+                foreach ($accessories as $accessory) {
+                    DB::alteration_message('...' . $accessory);
                 }
             }
         }
@@ -112,48 +130,36 @@ class FindAlsoBought extends BuildTask
 
     protected function findAlsoBought($product): array
     {
+        $lambda = Config::inst()->get(FindAlsoBought::class, 'decay_rate') * -1;
         $links = [];
         $orderIds = $this->getOrderIds($product);
-        if(count($orderIds)) {
-            $orders = Order::get()->filter(['ID' => $orderIds]);
-            $totalCount = [];
-            if($this->verbose) {
-                DB::alteration_message('... ... Orders Found '.$orders->count());
-            }
-            foreach($orders as $order) {
-                $orderItems = $order->Items();
-                foreach($orderItems as $orderItem) {
-                    $otherProduct = $orderItem->Product();
-                    if($otherProduct && $otherProduct->exists() && $otherProduct->AllowPurchase) {
-                        if($otherProduct->ID !== $product->ID) {
-                            if($otherProduct->Price < $product->Price) {
-                                $name = 'BoughtFor';
-                            } else {
-                                $name = 'EcommerceAlsoBoughtProducts';
-                            }
-                            if(! isset($links[$name][$otherProduct->ID])) {
-                                $links[$name][$otherProduct->ID] = 0;
-                            }
-                            $links[$name][$otherProduct->ID]++;
-                            if(! isset($totalCount[$name])) {
-                                $totalCount[$name] = 0;
-                            }
-                            $totalCount[$name]++;
-                        }
-                    }
+        if (!empty($orderIds)) {
+            foreach ($orderIds as $orderId) {
+                $orderItems = OrderItem::get()->filter(['OrderID' => $orderId]);
+                $myOrderItem = $orderItems->filter(['BuyableID' => $product->ID])->first();
+                if (! $myOrderItem || ! $myOrderItem->exists()) {
+                    user_error('FindAlsoBought::findAlsoBought: No order item found for product ID ' . $product->ID, E_USER_WARNING);
                 }
-            }
-            if($this->verbose) {
-                DB::alteration_message('... ... Total count of other products: '.array_sum($totalCount));
-            }
-            foreach($links as $name => $productArray) {
-                foreach($productArray as $productId => $count) {
-                    $totalCount = $totalCount[$name] ?? 1;
-                    $percentage = $count / $totalCount;
-                    $out1 = $percentage < Config::inst()->get(FindAlsoBought::class, 'min_percentage_to_be_included');
-                    $out2 = $count < Config::inst()->get(FindAlsoBought::class, 'min_absolute_count_to_be_included');
-                    if($out1 || $out2) {
-                        unset($links[$name][$productId]);
+                $orderItems = $orderItems->exclude('BuyableID', $product->ID);
+                $orderTs = strtotime($myOrderItem->Created);
+                foreach ($orderItems as $orderItem) {
+                    $otherProduct = $this->getCachedProducts($orderItem->BuyableID);
+                    if ($otherProduct && $otherProduct->exists()) {
+                        // added after main item ...
+                        // or price is less than the price of the main item (by 1.5 times)
+                        if ($orderItem->ID > $myOrderItem->ID || ($otherProduct->Price * 1.5)  < ($product->Price)) {
+                            $name = 'EcommerceAlsoBoughtProducts';
+                        } else {
+                            $name = 'BoughtFor';
+                        }
+                        if (! isset($links[$name])) {
+                            $links[$name] = [];
+                        }
+                        if (! isset($links[$name][$otherProduct->ID])) {
+                            $links[$name][$otherProduct->ID] = 0;
+                        }
+                        $daysAgo = (time() - $orderTs) / 86400;
+                        $links[$name][$otherProduct->ID] += exp($lambda * $daysAgo);
                     }
                 }
             }
@@ -161,13 +167,21 @@ class FindAlsoBought extends BuildTask
         return $links;
     }
 
-    protected function getOrderIds($product): array
+    /**
+     * returns an array of order IDs for the given product.
+     */
+    protected function getOrderIds(BuyableModel $product): array
     {
-        $orderIds = [];
-        $orderItems = $product->SalesOrderItems();
-        foreach($orderItems as $orderItem) {
-            $orderIds[$orderItem->OrderID] = $orderItem->OrderID;
+        return $product->SalesOrderItems()->columnUnique('OrderID');
+    }
+
+    protected $cachedProducts = [];
+
+    protected function getCachedProducts(int $id)
+    {
+        if (empty($this->cachedProducts[$id])) {
+            $this->cachedProducts[$id] = Product::get()->byID($id);
         }
-        return $orderIds;
+        return $this->cachedProducts[$id];
     }
 }
