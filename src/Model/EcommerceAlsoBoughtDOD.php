@@ -27,6 +27,7 @@ class EcommerceAlsoBoughtDOD extends Extension
         'EcommerceAlsoBoughtProducts' => [
             'Strength' => 'Float',
             'AutomaticallyAdded' => 'Boolean',
+            'PercentageAddedAfterwards' => 'Percentage',
         ],
     ];
 
@@ -47,12 +48,6 @@ class EcommerceAlsoBoughtDOD extends Extension
                             'EcommerceAlsoBoughtProducts',
                             'Also Bought Products',
                             $owner->EcommerceAlsoBoughtProducts(),
-                            GridFieldConfigForProducts::create()
-                        ),
-                        GridField::create(
-                            'BoughtFor',
-                            'Bought For',
-                            $owner->BoughtFor(),
                             GridFieldConfigForProducts::create()
                         ),
                     ]
@@ -116,6 +111,14 @@ class EcommerceAlsoBoughtDOD extends Extension
             [
                 'type' => 'index',
                 'columns' => ['Strength'],
+            ],
+        );
+        DB::require_index(
+            'Product_EcommerceAlsoBoughtProducts', // Table name
+            'UserAddedAfterwards',  // Field name
+            [
+                'type' => 'index',
+                'columns' => ['PercentageAddedAfterwards'],
             ],
         );
     }
