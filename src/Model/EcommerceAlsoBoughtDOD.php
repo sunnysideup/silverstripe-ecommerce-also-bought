@@ -122,4 +122,10 @@ class EcommerceAlsoBoughtDOD extends Extension
             ],
         );
     }
+
+    public function EcommerceAlsoBoughtProducts()
+    {
+        $owner = $this->getOwner();
+        return $owner->getManyManyComponents('EcommerceAlsoBoughtProducts')->orderBy('Product_EcommerceAlsoBoughtProducts.Strength DESC');
+    }
 }
