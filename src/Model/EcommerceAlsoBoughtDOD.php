@@ -20,6 +20,9 @@ use Sunnysideup\Ecommerce\Pages\Product;
  */
 class EcommerceAlsoBoughtDOD extends Extension
 {
+
+    private static $minimum_strength = 5;
+
     private static $many_many = [
         'EcommerceAlsoBoughtProducts' => Product::class,
     ];
@@ -65,7 +68,13 @@ class EcommerceAlsoBoughtDOD extends Extension
     public function EcommerceAlsoBoughtProductsForSale()
     {
         $owner = $this->getOwner();
-        $list = $owner->EcommerceAlsoBoughtProducts();
+        $minStrength = $owner->config()->get('minimum_strength');
+        if (!is_numeric($minStrength)) {
+            $minStrength = 5; // default value
+        }
+        $list = $owner->getManyManyComponents('EcommerceAlsoBoughtProducts')
+            ->where(['Product_EcommerceAlsoBoughtProducts.Strength > ' . $minStrength])
+            ->orderBy('Product_EcommerceAlsoBoughtProducts.Strength DESC');
 
         return $this->addAllowPurchaseFilter($list);
     }
@@ -126,6 +135,7 @@ class EcommerceAlsoBoughtDOD extends Extension
     public function EcommerceAlsoBoughtProducts()
     {
         $owner = $this->getOwner();
-        return $owner->getManyManyComponents('EcommerceAlsoBoughtProducts')->orderBy('Product_EcommerceAlsoBoughtProducts.Strength DESC');
+        return $owner->getManyManyComponents('EcommerceAlsoBoughtProducts')
+            ->orderBy('Product_EcommerceAlsoBoughtProducts.Strength DESC');
     }
 }
