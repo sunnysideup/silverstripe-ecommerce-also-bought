@@ -5,8 +5,11 @@ namespace Sunnysideup\EcommerceAlsoBought\Model;
 use SilverStripe\Core\Extension;
 use SilverStripe\Forms\FieldList;
 use SilverStripe\Forms\GridField\GridField;
+use SilverStripe\Forms\GridField\GridFieldAddExistingAutocompleter;
+use SilverStripe\Forms\GridField\GridFieldDeleteAction;
 use SilverStripe\ORM\DataList;
 use SilverStripe\ORM\DB;
+use SilverStripe\Versioned\GridFieldArchiveAction;
 use Sunnysideup\Ecommerce\Config\EcommerceConfig;
 use Sunnysideup\Ecommerce\Forms\Gridfield\Configs\GridFieldConfigForProducts;
 use Sunnysideup\Ecommerce\Pages\Product;
@@ -52,6 +55,8 @@ class EcommerceAlsoBoughtDOD extends Extension
                             'Also Bought Products',
                             $owner->EcommerceAlsoBoughtProducts(),
                             GridFieldConfigForProducts::create()
+                                ->removeComponentsByType(GridFieldArchiveAction::class)
+                                ->removeComponentsByType((GridFieldAddExistingAutocompleter::class))
                         ),
                     ]
                 );
