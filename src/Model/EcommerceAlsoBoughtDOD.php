@@ -6,7 +6,6 @@ use SilverStripe\Core\Extension;
 use SilverStripe\Forms\FieldList;
 use SilverStripe\Forms\GridField\GridField;
 use SilverStripe\Forms\GridField\GridFieldAddExistingAutocompleter;
-use SilverStripe\Forms\GridField\GridFieldDeleteAction;
 use SilverStripe\ORM\DataList;
 use SilverStripe\ORM\DB;
 use SilverStripe\Versioned\GridFieldArchiveAction;
@@ -24,7 +23,7 @@ use Sunnysideup\Ecommerce\Pages\Product;
 class EcommerceAlsoBoughtDOD extends Extension
 {
 
-    private static $minimum_strength = 5;
+    private static $minimum_strength = 20;
 
     private static $many_many = [
         'EcommerceAlsoBoughtProducts' => Product::class,
@@ -75,7 +74,7 @@ class EcommerceAlsoBoughtDOD extends Extension
         $owner = $this->getOwner();
         $minStrength = $owner->config()->get('minimum_strength');
         if (!is_numeric($minStrength)) {
-            $minStrength = 5; // default value
+            $minStrength = self::$minimum_strength; // default value
         }
         $list = $owner->getManyManyComponents('EcommerceAlsoBoughtProducts')
             ->where(['Product_EcommerceAlsoBoughtProducts.Strength > ' . $minStrength])
