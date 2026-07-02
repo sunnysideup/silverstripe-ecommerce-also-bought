@@ -2,6 +2,11 @@
 
 namespace Sunnysideup\EcommerceAlsoBought\Tasks;
 
+use Symfony\Component\Console\Input\InputDefinition;
+use Symfony\Component\Console\Input\ArrayInput;
+use SilverStripe\PolyExecution\PolyOutput;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Command\Command;
 use SilverStripe\Core\Config\Config;
 use SilverStripe\Dev\BuildTask;
 use SilverStripe\ORM\DB;
@@ -18,13 +23,15 @@ use Sunnysideup\Ecommerce\Pages\Product;
  */
 class FindAlsoBought extends BuildTask
 {
+    protected ?PolyOutput $output = null;
+
     protected $verbose = true;
 
-    protected $title = 'Find also bought products';
+    protected string $title = 'Find also bought products';
 
-    protected $description = 'Uses the order history to find products that are often bought together.';
+    private static $description = 'Uses the order history to find products that are often bought together.';
 
-    private static $segment = 'findalsobought';
+    protected static $commandName = 'findalsobought';
 
     private static $minimum_strength = 3;
 
@@ -38,14 +45,22 @@ class FindAlsoBought extends BuildTask
      */
     private static float $decay_rate = 0.0005;
 
+    public function run($request)
+    {
+        $this->runOnDemand();
+    }
+
     /**
      * run in verbose mode.
      */
-    public static function run_on_demand()
+    public function runOnDemand()
     {
-        $obj = new self();
-        $obj->verbose = true;
-        $obj->run(null);
+        $this->verbose = true;
+
+        $definition = new InputDefinition($this->getOptions());
+        $input = new ArrayInput([], $definition);
+        $this->output = PolyOutput::create(PolyOutput::FORMAT_ANSI);
+        $this->execute($input, $this->output);
     }
 
     /**
@@ -54,18 +69,24 @@ class FindAlsoBought extends BuildTask
     public function runSilently()
     {
         $this->verbose = false;
+        $definition = new InputDefinition($this->getOptions());
+        $input = new ArrayInput([], $definition);
+        $this->output = PolyOutput::create(PolyOutput::FORMAT_ANSI);
 
-        $this->run(null);
+        $this->execute($input, $this->output);
     }
 
-    public function run($request)
+
+    protected function execute(InputInterface $input, PolyOutput $output): int
     {
+        $this->output = $output;
         $products = Product::get()
             ->innerJoin('OrderItem', 'OrderItem.BuyableID = Product.ID')
             ->columnUnique('ID');
         if ($this->verbose) {
-            DB::alteration_message('Sold Products Found ' . count($products), 'created');
+            $this->output->writeln('Sold Products Found ' . count($products));
         }
+
         DB::query('DELETE FROM Product_EcommerceAlsoBoughtProducts WHERE AutomaticallyAdded = 1 ');
         $minStrength = $this->Config()->get('minimum_strength');
         foreach ($products as $productID) {
@@ -81,9 +102,12 @@ class FindAlsoBought extends BuildTask
                 }
             }
         }
+
         if ($this->verbose) {
-            DB::alteration_message('Finished', 'created');
+            $this->output->writeln('Finished');
         }
+
+        return Command::SUCCESS;
     }
 
     protected function findAlsoBought(BuyableModel $product): array
@@ -91,14 +115,15 @@ class FindAlsoBought extends BuildTask
         $lambda = Config::inst()->get(FindAlsoBought::class, 'decay_rate') * -1;
         $links = [];
         $orderIds = $this->getOrderIds($product);
-        if (!empty($orderIds)) {
+        if ($orderIds !== []) {
             foreach ($orderIds as $orderId) {
                 $orderItems = OrderItem::get()->filter(['OrderID' => $orderId]);
                 $myOrderItem = $orderItems->filter(['BuyableID' => $product->ID])->first();
                 if (! $myOrderItem || ! $myOrderItem->exists()) {
                     user_error('FindAlsoBought::findAlsoBought: No order item found for product ID ' . $product->ID, E_USER_WARNING);
                 }
-                $orderItems = $orderItems->exclude('BuyableID', $product->ID);
+
+                $orderItems = $orderItems->exclude(['BuyableID' => $product->ID]);
                 $orderTs = strtotime($myOrderItem->Created);
                 $countBefore = 0;
                 $countAfter = 0;
@@ -115,6 +140,7 @@ class FindAlsoBought extends BuildTask
                                 'Count' => 0,
                             ];
                         }
+
                         if ($orderItem->ID > $myOrderItem->ID) {
                             $countAfter++;
                         } else {
@@ -126,15 +152,17 @@ class FindAlsoBought extends BuildTask
                         $links[$otherProduct->ID]['PercentageAddedAfterwards'] += $countAfter / ($countBefore + $countAfter);
                         $links[$otherProduct->ID]['Count']++;
                     } else {
-                        DB::alteration_message('Could not find ' . $orderItem->BuyableID, 'deleted');
+                        $this->output->writeln('Could not find ' . $orderItem->BuyableID);
                     }
                 }
             }
         }
+
         if ($this->verbose) {
             $vv = [];
             $vv[] = $product->Title . ' (' . $product->InternalItemID . ')';
         }
+
         foreach (array_keys($links) as $id) {
             $links[$id]['PercentageAddedAfterwards'] = round(
                 $links[$id]['PercentageAddedAfterwards'] / $links[$id]['Count'],
@@ -149,11 +177,13 @@ class FindAlsoBought extends BuildTask
                     '... % Added After: ' . $links[$id]['PercentageAddedAfterwards'];
             }
         }
+
         if ($this->verbose) {
             foreach ($vv as $s) {
-                DB::alteration_message($s);
+                $this->output->writeln($s);
             }
         }
+
         return $links;
     }
 
@@ -172,6 +202,7 @@ class FindAlsoBought extends BuildTask
         if (empty($this->cachedProducts[$id])) {
             $this->cachedProducts[$id] = Product::get()->byID($id);
         }
+
         return $this->cachedProducts[$id];
     }
 }
